@@ -8,6 +8,7 @@ import (
 	"github.com/skupperproject/skupper/internal/cmd/skupper/listener"
 	"github.com/skupperproject/skupper/internal/cmd/skupper/site"
 	"github.com/skupperproject/skupper/internal/cmd/skupper/token"
+	"github.com/skupperproject/skupper/internal/cmd/skupper/version"
 	"github.com/skupperproject/skupper/pkg/config"
 	"github.com/spf13/cobra"
 )
@@ -30,6 +31,7 @@ func NewSkupperRootCommand() *cobra.Command {
 	rootCmd.AddCommand(listener.NewCmdListener())
 	rootCmd.AddCommand(link.NewCmdLink())
 	rootCmd.AddCommand(connector.NewCmdConnector())
+	rootCmd.AddCommand(version.NewCmdVersion())
 
 	return rootCmd
 }
