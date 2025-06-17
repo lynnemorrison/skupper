@@ -1,6 +1,8 @@
 package fs
 
 import (
+	"fmt"
+
 	"github.com/skupperproject/skupper/internal/cmd/skupper/common"
 	v1 "k8s.io/api/core/v1"
 )
@@ -46,4 +48,29 @@ func (s *SecretHandler) Delete(name string) error {
 	return nil
 }
 
-func (s *SecretHandler) List() ([]*v1.Secret, error) { return nil, nil }
+func (c *SecretHandler) List() ([]*v1.Secret, error) {
+	var secrets []*v1.Secret
+	// First read from runtime directory, where output is found after bootstrap
+	// has run.  If no runtime secrets try and display configured secrets
+	path := c.pathProvider.GetRuntimeNamespace()
+	err, files := c.ReadDir(path, common.Secrets)
+	if err != nil {
+		fmt.Println("err: reading dir", path)
+		return nil, err
+	}
+
+	for _, file := range files {
+		err, site := c.ReadFile(path, file.Name(), common.Secrets)
+		if err != nil {
+			fmt.Println("err reading file", file.Name())
+			return nil, err
+		}
+		var context v1.Secret
+		if err = c.DecodeYaml(site, &context); err != nil {
+			return nil, err
+		}
+		secrets = append(secrets, &context)
+	}
+
+	return secrets, nil
+}

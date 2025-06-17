@@ -2,6 +2,7 @@ package fs
 
 import (
 	"fmt"
+
 	"github.com/skupperproject/skupper/internal/cmd/skupper/common"
 	"github.com/skupperproject/skupper/pkg/apis/skupper/v2alpha1"
 )
@@ -82,4 +83,33 @@ func (s *RouterAccessHandler) Update(name string) (*v2alpha1.RouterAccess, error
 	}
 
 	return &context, nil
+}
+
+func (s *RouterAccessHandler) List(opts GetOptions) ([]*v2alpha1.RouterAccess, error) {
+	var routerAccesss []*v2alpha1.RouterAccess
+
+	// First read from runtime directory, where output is found after bootstrap
+	// has run.  If no runtime sites try and display configured sites
+	path := s.pathProvider.GetRuntimeNamespace()
+	err, files := s.ReadDir(path, common.RouterAccesses)
+	if err != nil {
+		path = s.pathProvider.GetNamespace()
+		err, files = s.ReadDir(path, common.RouterAccesses)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	for _, file := range files {
+		err, routerAccess := s.ReadFile(path, file.Name(), common.RouterAccesses)
+		if err != nil {
+			return nil, err
+		}
+		var context v2alpha1.RouterAccess
+		if err = s.DecodeYaml(routerAccess, &context); err != nil {
+			return nil, err
+		}
+		routerAccesss = append(routerAccesss, &context)
+	}
+	return routerAccesss, nil
 }
