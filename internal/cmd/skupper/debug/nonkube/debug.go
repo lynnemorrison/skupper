@@ -9,11 +9,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/skupperproject/skupper/api/types"
 	"github.com/skupperproject/skupper/internal/cmd/skupper/common"
+	"github.com/skupperproject/skupper/internal/cmd/skupper/common/utils"
 	"github.com/skupperproject/skupper/internal/config"
+	internalclient "github.com/skupperproject/skupper/internal/nonkube/client/compat"
 	"github.com/skupperproject/skupper/internal/nonkube/client/fs"
 	"github.com/skupperproject/skupper/internal/utils/validator"
 	"github.com/skupperproject/skupper/pkg/generated/client/clientset/versioned/scheme"
@@ -215,27 +218,38 @@ func (cmd *CmdDebug) Run() error {
 		writeTar(rpath+"skrouterd.json", skrouterd, time.Now(), tw)
 	}
 
-	if platform == types.PlatformPodman {
-		ps, err := runCommand("podman")
-		fmt.Println("ps:", ps)
-		skupperPod := cmd.namespace + "-skupper-router"
-		podmanName := "name=" + skupperPod
-		fmt.Println("podman:", skupperPod, podmanName)
-		pID, err := runCommand("podman", "ps", "--filter", podmanName, "--format", "'{{.ID}}'")
-
-		containerID := string(pID)
-		fmt.Println("err:", err, containerID)
-		if err == nil {
-			podmanInspect, err := runCommand("podman", "container", "inspect", containerID)
-			fmt.Println("pID:", containerID, podmanInspect, err)
-			if err == nil {
-				writeTar(rpath+skupperPod, podmanInspect, time.Now(), tw)
-			}
+	cli, err := internalclient.NewCompatClient(os.Getenv("CONTAINER_ENDPOINT"), "")
+	if err == nil {
+		rtrContainerName := cmd.namespace + "-skupper-router"
+		if container, err := cli.ContainerInspect(rtrContainerName); err == nil {
+			encodedOutput, _ := utils.Encode("yaml", container)
+			writeTar(rpath+"Container-"+container.Name+".yaml", []byte(encodedOutput), time.Now(), tw)
 		}
-		logs, err := runCommand("podman", "logs", containerID)
-		fmt.Println("logs", logs, err)
+
+		out, err := cli.ContainerExec(rtrContainerName, strings.Split("skstat -c", " "))
 		if err == nil {
-			writeTar(path+"/logs"+skupperPod, logs, time.Now(), tw)
+			fmt.Println("containerexec: ", err, out)
+		}
+
+		logs, err := cli.ContainerLogs(rtrContainerName)
+		if err == nil {
+			writeTar(path+"logs/"+rtrContainerName+".txt", []byte(logs), time.Now(), tw)
+		}
+
+		ctlContainerName := "system-controller"
+		if container, err := cli.ContainerInspect(ctlContainerName); err == nil {
+			encodedOutput, _ := utils.Encode("yaml", container)
+			writeTar(rpath+"Container-"+container.Name+".yaml", []byte(encodedOutput), time.Now(), tw)
+		}
+
+		out, err = cli.ContainerExec(ctlContainerName, strings.Split("skstat -c", " "))
+		if err == nil {
+			fmt.Println("containerexec: ", err, out)
+		}
+
+		logs, err = cli.ContainerLogs(ctlContainerName)
+		if err == nil {
+			writeTar(path+"logs/"+ctlContainerName+".txt", []byte(logs), time.Now(), tw)
 		}
 	}
 
