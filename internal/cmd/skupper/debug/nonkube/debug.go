@@ -2,12 +2,10 @@ package nonkube
 
 import (
 	"archive/tar"
-	"bytes"
 	"compress/gzip"
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -19,11 +17,8 @@ import (
 	internalclient "github.com/skupperproject/skupper/internal/nonkube/client/compat"
 	"github.com/skupperproject/skupper/internal/nonkube/client/fs"
 	"github.com/skupperproject/skupper/internal/utils/validator"
-	"github.com/skupperproject/skupper/pkg/generated/client/clientset/versioned/scheme"
 	"github.com/skupperproject/skupper/pkg/nonkube/api"
 	"github.com/spf13/cobra"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/serializer/json"
 )
 
 type CmdDebug struct {
@@ -116,16 +111,16 @@ func (cmd *CmdDebug) Run() error {
 	platform := config.GetPlatform()
 
 	if platform == types.PlatformPodman {
-		pv, err := runCommand("podman", "version")
+		pv, err := utils.RunCommand("podman", "version")
 		if err == nil {
-			writeTar("/versions/podman.txt", pv, time.Now(), tw)
+			utils.WriteTar("/versions/podman.txt", pv, time.Now(), tw)
 		}
 	}
 
-	manifest, err := runCommand("skupper", "version", "-o", "yaml", "-n", cmd.namespace)
+	manifest, err := utils.RunCommand("skupper", "version", "-o", "yaml", "-n", cmd.namespace)
 	if err == nil {
-		writeTar("/versions/skupper.yaml", manifest, time.Now(), tw)
-		writeTar("/versions/skupper.yaml.txt", manifest, time.Now(), tw)
+		utils.WriteTar("/versions/skupper.yaml", manifest, time.Now(), tw)
+		utils.WriteTar("/versions/skupper.yaml.txt", manifest, time.Now(), tw)
 	}
 
 	//podman events ??
@@ -134,7 +129,7 @@ func (cmd *CmdDebug) Run() error {
 	sites, err := cmd.siteHandler.List(opts)
 	if err == nil && sites != nil && len(sites) != 0 {
 		for _, site := range sites {
-			err := writeObject(site, rpath+"Site-"+site.Name, tw)
+			err := utils.WriteObject(site, rpath+"Site-"+site.Name, tw)
 			if err != nil {
 				return err
 			}
@@ -144,7 +139,7 @@ func (cmd *CmdDebug) Run() error {
 	routerAccesses, err := cmd.routerAccessHandler.List(opts)
 	if err == nil && routerAccesses != nil && len(routerAccesses) != 0 {
 		for _, routerAccess := range routerAccesses {
-			err = writeObject(routerAccess, rpath+"RouterAccess-"+routerAccess.Name, tw)
+			err = utils.WriteObject(routerAccess, rpath+"RouterAccess-"+routerAccess.Name, tw)
 			if err != nil {
 				return err
 			}
@@ -154,7 +149,7 @@ func (cmd *CmdDebug) Run() error {
 	listeners, err := cmd.listenerHandler.List()
 	if err == nil && listeners != nil && len(listeners) != 0 {
 		for _, listener := range listeners {
-			err := writeObject(listener, rpath+"Listener-"+listener.Name, tw)
+			err := utils.WriteObject(listener, rpath+"Listener-"+listener.Name, tw)
 			if err != nil {
 				return err
 			}
@@ -164,7 +159,7 @@ func (cmd *CmdDebug) Run() error {
 	connectors, err := cmd.connectorHandler.List()
 	if err == nil && connectors != nil && len(connectors) != 0 {
 		for _, connector := range connectors {
-			err := writeObject(connector, rpath+"Connector-"+connector.Name, tw)
+			err := utils.WriteObject(connector, rpath+"Connector-"+connector.Name, tw)
 			if err != nil {
 				return err
 			}
@@ -174,7 +169,7 @@ func (cmd *CmdDebug) Run() error {
 	links, err := cmd.linkHandler.List(opts)
 	if err == nil && links != nil && len(links) != 0 {
 		for _, link := range links {
-			err := writeObject(link, rpath+"Link-"+link.Name, tw)
+			err := utils.WriteObject(link, rpath+"Link-"+link.Name, tw)
 			if err != nil {
 				return err
 			}
@@ -184,7 +179,7 @@ func (cmd *CmdDebug) Run() error {
 	certificates, err := cmd.certificateHandler.List()
 	if err == nil && certificates != nil && len(certificates) != 0 {
 		for _, certificate := range certificates {
-			err := writeObject(certificate, rpath+"Certificate-"+certificate.Name, tw)
+			err := utils.WriteObject(certificate, rpath+"Certificate-"+certificate.Name, tw)
 			if err != nil {
 				return err
 			}
@@ -194,7 +189,7 @@ func (cmd *CmdDebug) Run() error {
 	secrets, err := cmd.secretHandler.List()
 	if err == nil && secrets != nil && len(secrets) != 0 {
 		for _, secret := range secrets {
-			err := writeObject(secret, rpath+"Secret-"+secret.Name, tw)
+			err := utils.WriteObject(secret, rpath+"Secret-"+secret.Name, tw)
 			if err != nil {
 				return err
 			}
@@ -204,7 +199,7 @@ func (cmd *CmdDebug) Run() error {
 	configMaps, err := cmd.configMapHandler.List()
 	if err == nil && configMaps != nil && len(configMaps) != 0 {
 		for _, configMap := range configMaps {
-			err := writeObject(configMap, rpath+"ConfigMap-"+configMap.Name, tw)
+			err := utils.WriteObject(configMap, rpath+"ConfigMap-"+configMap.Name, tw)
 			if err != nil {
 				return err
 			}
@@ -215,7 +210,7 @@ func (cmd *CmdDebug) Run() error {
 	//skrPath := pathProvider.GetRuntimeNamespace()+ api.
 	skrouterd, err := os.ReadFile(skrPath)
 	if err == nil && skrouterd != nil {
-		writeTar(rpath+"skrouterd.json", skrouterd, time.Now(), tw)
+		utils.WriteTar(rpath+"skrouterd.json", skrouterd, time.Now(), tw)
 	}
 
 	cli, err := internalclient.NewCompatClient(os.Getenv("CONTAINER_ENDPOINT"), "")
@@ -223,7 +218,7 @@ func (cmd *CmdDebug) Run() error {
 		rtrContainerName := cmd.namespace + "-skupper-router"
 		if container, err := cli.ContainerInspect(rtrContainerName); err == nil {
 			encodedOutput, _ := utils.Encode("yaml", container)
-			writeTar(rpath+"Container-"+container.Name+".yaml", []byte(encodedOutput), time.Now(), tw)
+			utils.WriteTar(rpath+"Container-"+container.Name+".yaml", []byte(encodedOutput), time.Now(), tw)
 		}
 
 		out, err := cli.ContainerExec(rtrContainerName, strings.Split("skstat -c", " "))
@@ -233,13 +228,13 @@ func (cmd *CmdDebug) Run() error {
 
 		logs, err := cli.ContainerLogs(rtrContainerName)
 		if err == nil {
-			writeTar(path+"logs/"+rtrContainerName+".txt", []byte(logs), time.Now(), tw)
+			utils.WriteTar(path+"logs/"+rtrContainerName+".txt", []byte(logs), time.Now(), tw)
 		}
 
 		ctlContainerName := "system-controller"
 		if container, err := cli.ContainerInspect(ctlContainerName); err == nil {
 			encodedOutput, _ := utils.Encode("yaml", container)
-			writeTar(rpath+"Container-"+container.Name+".yaml", []byte(encodedOutput), time.Now(), tw)
+			utils.WriteTar(rpath+"Container-"+container.Name+".yaml", []byte(encodedOutput), time.Now(), tw)
 		}
 
 		out, err = cli.ContainerExec(ctlContainerName, strings.Split("skstat -c", " "))
@@ -249,7 +244,7 @@ func (cmd *CmdDebug) Run() error {
 
 		logs, err = cli.ContainerLogs(ctlContainerName)
 		if err == nil {
-			writeTar(path+"logs/"+ctlContainerName+".txt", []byte(logs), time.Now(), tw)
+			utils.WriteTar(path+"logs/"+ctlContainerName+".txt", []byte(logs), time.Now(), tw)
 		}
 	}
 
@@ -258,51 +253,3 @@ func (cmd *CmdDebug) Run() error {
 }
 
 func (cmd *CmdDebug) WaitUntil() error { return nil }
-
-// helper functions
-func runCommand(name string, args ...string) ([]byte, error) {
-	cmd := exec.Command(name, args...)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-	err := cmd.Run()
-	if err != nil {
-		return nil, err
-	}
-	return out.Bytes(), nil
-}
-
-func writeTar(name string, data []byte, ts time.Time, tw *tar.Writer) error {
-	hdr := &tar.Header{
-		Name:    name,
-		Mode:    0600,
-		Size:    int64(len(data)),
-		ModTime: ts,
-	}
-	err := tw.WriteHeader(hdr)
-	if err != nil {
-		return fmt.Errorf("Failed to write tar file header: %w", err)
-	}
-	_, err = tw.Write(data)
-	if err != nil {
-		return fmt.Errorf("Failed to write to tar archive: %w", err)
-	}
-	return nil
-}
-
-func writeObject(rto runtime.Object, name string, tw *tar.Writer) error {
-	var b bytes.Buffer
-	s := json.NewYAMLSerializer(json.DefaultMetaFactory, scheme.Scheme, scheme.Scheme)
-	if err := s.Encode(rto, &b); err != nil {
-		return err
-	}
-	err := writeTar(name+".yaml", b.Bytes(), time.Now(), tw)
-	if err != nil {
-		return err
-	}
-	err = writeTar(name+".yaml.txt", b.Bytes(), time.Now(), tw)
-	if err != nil {
-		return err
-	}
-	return nil
-}
